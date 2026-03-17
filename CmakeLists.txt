@@ -1,0 +1,92 @@
+cmake_minimum_required(VERSION 3.14)
+include(FetchContent)
+
+project(IMN504 LANGUAGES C CXX)
+
+# Set the C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set(LIBS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+
+# ============================================================================
+# Libraries
+# ============================================================================
+
+# GLM
+add_subdirectory(${LIBS_DIR}/glm)
+
+# ImGui
+add_library(imgui STATIC
+    ${LIBS_DIR}/imgui/imgui.cpp
+    ${LIBS_DIR}/imgui/imgui_demo.cpp
+    ${LIBS_DIR}/imgui/imgui_draw.cpp
+    ${LIBS_DIR}/imgui/imgui_impl_glfw_gl3.cpp
+)
+target_include_directories(imgui PUBLIC ${LIBS_DIR}/imgui ${LIBS_DIR}/glad/include ${LIBS_DIR})
+set_target_properties(imgui PROPERTIES FOLDER Libs)
+
+# stb image
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE ${LIBS_DIR}/stb)
+
+# GLAD
+set(GLAD_SRC ${LIBS_DIR}/glad/src/glad.c)
+add_library(glad STATIC ${GLAD_SRC})
+set_target_properties(glad PROPERTIES LINKER_LANGUAGE CXX)
+target_include_directories(glad PUBLIC ${LIBS_DIR}/glad/include)
+set_target_properties(glad PROPERTIES FOLDER Libs)
+
+# GLFW - manually specify include directories and libraries
+set(GLFW_INCLUDE_DIR ${LIBS_DIR}/GLFW/include)
+set(GLFW_LIBRARY_DIR ${LIBS_DIR}/GLFW/lib)
+
+# Assuming glfw3.lib or glfw3.a is available in ${GLFW_LIBRARY_DIR}
+add_library(glfw STATIC IMPORTED)
+set_target_properties(glfw PROPERTIES
+    IMPORTED_LOCATION ${GLFW_LIBRARY_DIR}/glfw3.lib
+    INTERFACE_INCLUDE_DIRECTORIES ${GLFW_INCLUDE_DIR}
+)
+set_target_properties(glfw PROPERTIES FOLDER Libs/GLFW3)
+
+# Logger
+add_library(Logger STATIC ${LIBS_DIR}/Logger/ImGUILogger.cpp)
+target_include_directories(Logger PUBLIC ${LIBS_DIR}/Logger ${LIBS_DIR})
+set_target_properties(Logger PROPERTIES FOLDER Libs)
+
+# image_DXT
+add_library(image_DXT STATIC ${LIBS_DIR}/image_DXT.cpp)
+target_include_directories(image_DXT PUBLIC ${LIBS_DIR})
+set_target_properties(image_DXT PROPERTIES FOLDER Libs)
+
+# ============================================================================
+# Source Files
+# ============================================================================
+# Get all sources.
+file(GLOB_RECURSE SOURCE_FILES ${SOURCE_DIR}/*.cpp ${SOURCE_DIR}/*.hpp ${SOURCE_DIR}/*.h
+     ${SOURCE_DIR}/*.vert ${SOURCE_DIR}/*.frag ${SOURCE_DIR}/*.glsl)
+foreach(SRC IN ITEMS ${SOURCE_FILES})
+    get_filename_component(SRC_PATH "${SRC}" PATH)
+    file(RELATIVE_PATH SRC_PATH_REL "${SOURCE_DIR}" "${SRC_PATH}")
+    string(REPLACE "/" "\\" GROUP_PATH "/${SRC_PATH_REL}")
+	# Create group to make visual studio filters.
+    source_group("Sources${GROUP_PATH}" FILES "${SRC}")
+endforeach()
+message("Getting all sources... DONE")
+
+# ============================================================================
+# Executable
+# ============================================================================
+add_executable(${PROJECT_NAME} ${SOURCE_FILES} ${SHADERS_FILES})
+target_include_directories(${PROJECT_NAME} PRIVATE 
+    ${SOURCE_DIR} 
+    ${LIBS_DIR}/glad/include 
+    ${GLFW_INCLUDE_DIR}
+    ${LIBS_DIR}/Logger
+)
+target_link_libraries(${PROJECT_NAME} imgui glm stb glad glfw Logger image_DXT)
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
