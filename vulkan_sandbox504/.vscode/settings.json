@@ -1,0 +1,5 @@
+{
+  "cmake.configureSettings": {
+    "CMAKE_EXPORT_COMPILE_COMMANDS": "YES"
+  }
+}
