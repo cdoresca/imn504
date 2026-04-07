@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include  <float.h>
 
 #include "application/SubApplication.hpp"
 #include "camera.hpp"
@@ -17,6 +18,8 @@ namespace DrawIndexedSampleData {
         Vec3f pos;
         Vec3f normal;
     };
+
+   
 
     struct ViewUBO : public RHI::BaseUBO {
         Mat4f view;
@@ -38,7 +41,16 @@ namespace DrawIndexedSampleData {
             far = camera.getZFar();
         }
     };
-}
+} 
+
+
+struct Box {
+
+    glm::vec3 min;
+    glm::vec3 max;
+};
+
+using namespace std;
 
 class SubAppDrawIndexed : public SubApplication {
 public:
@@ -62,6 +74,8 @@ public:
         renderer()->createPipeline(m_pipelineDesc);
         m_pipelineDesc.setUBO(&m_viewUbo, "viewUbo");
 
+       
+
         // Load a single brick model
         TriangleData triData[5] = {
             TriangleMeshLoader::loadTriangleData("models/Brick1.obj"),
@@ -74,8 +88,17 @@ public:
         for (int i = 0; i < 5; i++) {
             std::vector<DrawIndexedSampleData::Vertex> vertices;
             vertices.reserve(triData[i].position.size());
+            box[i].min = glm::vec3(FLT_MAX);
+            box[i].max = glm::vec3(-FLT_MAX);
             for (size_t v = 0; v < triData[i].position.size(); v++) {
                 vertices.push_back({Vec3f(triData[i].position[v]), Vec3f(triData[i].normal[v])});
+
+                
+                for (int j = 0; j < 3; j++) {
+                    box[i].min[j] = std::min(box[i].min[j], triData[i].position[v][j]);
+                    box[i].max[j] = std::max(box[i].max[j], triData[i].position[v][j]);
+                }
+                
             }
 
             m_vertexBuffer[i].specialUsage = RHI::Usage::eVertex;
@@ -86,13 +109,49 @@ public:
 
             m_indexCount[i] = static_cast<uint32_t>(triData[i].indices.size());
         }
+        for (int i = 0; i < 20; i++) {
+            for (int j = 0; j < 20; j++) {
+                int type = rand() % 6;
+                glm::vec3 diff = box[type].max - box[type].min;
+                glm::vec3 center = (box[type].max + box[type].min) * 0.5f;
+                
+                glm::mat4 T_center = glm::translate(glm::mat4(1.0f), -center);
+                float offsetX = (i % 2 == 0) ? 0.0f : diff.x * 0.5f;
+                glm::vec3 pos = glm::vec3(
+                    j * diff.x + offsetX, 
+                    i * diff.y,           
+                    0.0f);
+                glm::mat4 T_place = glm::translate(glm::mat4(1.0f), pos);
+                switch (type) {
+                case 0:
+                    brick0.push_back(T_place * T_center);
+                    break;
+                case 1:
+                    brick1.push_back(T_place * T_center);
+                    break;
+                case 2:
+                    brick2.push_back(T_place * T_center);
+                    break;
+                case 3:
+                    brick3.push_back(T_place * T_center);
+                    break;
+                case 4:
+                    brick4.push_back(T_place * T_center);
+                    break;
+                default:
+                    break;
+                }
+                
+            }
+        }
+       
     }
 
     void shutdown() override { renderer()->removeShaderIncludePaths(m_shaderPath); }
     void handleEvent() override { m_camera.handleEvents(); }
     void resize(int width, int height) override { m_camera.resize(width, height); }
     void animate(float deltaTime) override { m_camera.animate(deltaTime); }
-
+    
     void render() override {
         m_viewUbo.updateViewUBO(m_camera);
 
@@ -125,8 +184,13 @@ private:
     RHI::BufferDesc m_indexBuffer[5];
     uint32_t m_indexCount[5];
     std::deque<nanosecondsF> gpuTimeHistory;
-    glm::mat4 brickMatrix[200];
-    glm::vec4 center;
+    vector<glm::mat4> brick0;
+    vector<glm::mat4> brick1;
+    vector<glm::mat4> brick2;
+    vector<glm::mat4> brick3;
+    vector<glm::mat4> brick4;
+    Box box[5];
+
 };
 
 REGISTER_SUBAPP("DrawIndexed", SubAppDrawIndexed)
