@@ -50,6 +50,16 @@ struct Box {
     glm::vec3 max;
 };
 
+struct Brick {
+    uint32_t type;
+    glm::mat4 transform;
+};
+
+struct offset {
+    uint32_t vertexOffset;
+    uint32_t indexOffset;
+    uint32_t count;
+};
 using namespace std;
 
 class SubAppDrawIndexed : public SubApplication {
@@ -85,33 +95,37 @@ public:
             TriangleMeshLoader::loadTriangleData("models/Brick5.obj"),
         };
       
+        std::vector<DrawIndexedSampleData::Vertex> vertices;
+        std::vector<uint> indices;
         for (int i = 0; i < 5; i++) {
-            std::vector<DrawIndexedSampleData::Vertex> vertices;
-            vertices.reserve(triData[i].position.size());
+
             box[i].min = glm::vec3(FLT_MAX);
             box[i].max = glm::vec3(-FLT_MAX);
+            info[i].vertexOffset = vertices.size();
+            info[i].indexOffset = triData[i].indices.size();
+            info[i].count = static_cast<uint32_t>(indices.size());
             for (size_t v = 0; v < triData[i].position.size(); v++) {
                 vertices.push_back({Vec3f(triData[i].position[v]), Vec3f(triData[i].normal[v])});
 
-                
                 for (int j = 0; j < 3; j++) {
                     box[i].min[j] = std::min(box[i].min[j], triData[i].position[v][j]);
                     box[i].max[j] = std::max(box[i].max[j], triData[i].position[v][j]);
                 }
-                
+
             }
-
-            m_vertexBuffer[i].specialUsage = RHI::Usage::eVertex;
-            createAndUploadBuffer(*renderer(), m_vertexBuffer[i], vertices, "DrawIndexed Vertex Buffer");
-
-            m_indexBuffer[i].specialUsage = RHI::Usage::eIndex;
-            createAndUploadBuffer(*renderer(), m_indexBuffer[i], triData[i].indices, "DrawIndexed Index Buffer");
-
-            m_indexCount[i] = static_cast<uint32_t>(triData[i].indices.size());
+                indices.insert(indices.end(), triData[i].indices.begin(), triData[i].indices.end());
         }
+            m_vertexBuffer.specialUsage = RHI::Usage::eVertex;
+            createAndUploadBuffer(*renderer(), m_vertexBuffer, vertices, "DrawIndexed Vertex Buffer");
+
+            m_indexBuffer.specialUsage = RHI::Usage::eIndex;
+            createAndUploadBuffer(*renderer(), m_indexBuffer, indices, "DrawIndexed Index Buffer");
+
+        
+       
         for (int i = 0; i < 20; i++) {
             for (int j = 0; j < 20; j++) {
-                int type = rand() % 6;
+                int type = rand() % 5;
                 glm::vec3 diff = box[type].max - box[type].min;
                 glm::vec3 center = (box[type].max + box[type].min) * 0.5f;
                 
@@ -122,29 +136,30 @@ public:
                     i * diff.y,           
                     0.0f);
                 glm::mat4 T_place = glm::translate(glm::mat4(1.0f), pos);
-                switch (type) {
-                case 0:
-                    brick0.push_back(T_place * T_center);
-                    break;
-                case 1:
-                    brick1.push_back(T_place * T_center);
-                    break;
-                case 2:
-                    brick2.push_back(T_place * T_center);
-                    break;
-                case 3:
-                    brick3.push_back(T_place * T_center);
-                    break;
-                case 4:
-                    brick4.push_back(T_place * T_center);
-                    break;
-                default:
-                    break;
-                }
-                
+                Brick b;
+                b.type = type;
+                b.transform = T_place * T_center;
+                brickMatrix.push_back(b);
             }
         }
-       
+        
+            bufferMatrix.size = sizeof(Brick) * brickMatrix.size();
+            bufferMatrix.shaderAccess = RHI::ShaderAccessMode::eReadOnly;
+            createAndUploadBuffer(*renderer(), bufferMatrix, brickMatrix, "buffer matrix");
+
+            for (int i = 0; i < 200; i++) {
+                RHI::DrawIndexedIndirectCommand copy;
+                copy.indexCount = info[brickMatrix[i].type].count;
+                copy.instanceCount = 1;
+                copy.firstIndex = info[brickMatrix[i].type].indexOffset;
+                copy.firstInstance = 0;
+                copy.vertexOffset = info[brickMatrix[i].type].vertexOffset;
+                
+                command.push_back(copy);
+            }
+
+            m_indirectBuffer.specialUsage = RHI::Usage::eIndirectArgs;
+            createAndUploadBuffer(*renderer(), m_indirectBuffer, command, "indirect buffer");
     }
 
     void shutdown() override { renderer()->removeShaderIncludePaths(m_shaderPath); }
@@ -157,11 +172,13 @@ public:
 
         RHI::CommandList commandList;
         commandList.bindPipeline(&m_pipelineDesc);
-        for (int i = 0; i < 5; i++) {
-            commandList.useVertexBuffer(0, 0, &m_vertexBuffer[i]);
-            commandList.useIndexBuffer(0, RHI::IndexType::eUint32, &m_indexBuffer[i]);
-            commandList.drawIndexed(m_indexCount[i], 1, 0, 0, 0);
-        }
+        
+        commandList.useResource(&m_pipelineDesc, 1, 0, &bufferMatrix);
+        commandList.useVertexBuffer(0, 0, &m_vertexBuffer);
+        commandList.useIndexBuffer(0, RHI::IndexType::eUint32, &m_indexBuffer);
+            
+        commandList.drawIndexedIndirect(&m_indirectBuffer,0,command.size(),sizeof(RHI::DrawIndexedIndirectCommand));
+            
 
         renderer()->compileAndUseCommandList(commandList);
     }
@@ -180,17 +197,17 @@ private:
     Camera m_camera;
     DrawIndexedSampleData::ViewUBO m_viewUbo;
     RHI::PipelineDesc m_pipelineDesc;
-    RHI::BufferDesc m_vertexBuffer[5];
-    RHI::BufferDesc m_indexBuffer[5];
-    uint32_t m_indexCount[5];
+    RHI::BufferDesc m_vertexBuffer;
+    RHI::BufferDesc m_indexBuffer;
+    
     std::deque<nanosecondsF> gpuTimeHistory;
-    vector<glm::mat4> brick0;
-    vector<glm::mat4> brick1;
-    vector<glm::mat4> brick2;
-    vector<glm::mat4> brick3;
-    vector<glm::mat4> brick4;
+    vector<Brick> brickMatrix;
+    
     Box box[5];
-
+    offset info[5];
+    vector<RHI::DrawIndexedIndirectCommand> command;
+    RHI::BufferDesc bufferMatrix;
+    RHI::BufferDesc m_indirectBuffer;
 };
 
 REGISTER_SUBAPP("DrawIndexed", SubAppDrawIndexed)
