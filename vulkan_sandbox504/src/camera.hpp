@@ -5,7 +5,7 @@
 #include "defines.hpp"
 
 
-// Freefly camera.
+// Freefly camera
 class Camera {
 public:
     Camera() = default;
@@ -63,6 +63,9 @@ public:
     const Mat4f &getViewMatrix() const { return _viewMatrix; }
     const Mat4f &getProjectionMatrix() const { return _projectionMatrix; }
     const Vec3f &getPosition() const { return _position; }
+    const Vec3f &getFoward() const { return _position - _invDir; }
+    const Vec3f &getRight() const  { return _right; }
+    const Vec3f &getUp() const  { return _up; }
     float getFovy() const { return _fovy; }
     float getZNear() const { return _zNear; }
     float getZFar() const { return _zFar; }
@@ -108,6 +111,7 @@ public:
 
     // ==================== private methods ====================
 private:
+
     void _move(const float p_amount, const Vec3f &p_direction) {
         const Vec3f newPos = _position + p_direction * p_amount * _speed;
         _setAnimationGoal(newPos);
@@ -182,5 +186,7 @@ private:
     float _smoothness = 0.25f; // Time to reach the goal position (in s)
     float _speed = 1.f;        // Speed of the camera (unit per move call)
     float _sensitivity = 0.1f; // Sensitivity of the mouse
+
+  
 
 };
