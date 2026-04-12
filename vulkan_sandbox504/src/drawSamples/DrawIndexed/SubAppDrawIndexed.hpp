@@ -137,56 +137,54 @@ struct Frustum {
     plan face[6];
 
     void updateFrustrum(const Camera &camera) {
-        glm::vec3 fwd = glm::normalize(camera.getFoward());
-        glm::vec3 up = glm::normalize(camera.getUp());
-        glm::vec3 right = glm::normalize(camera.getRight());
+        glm::mat4 V = camera.getViewMatrix();
+        glm::mat4 P = camera.getProjectionMatrix();
 
-        float h = 2 * tanf(camera.getFovy() / 2) * camera.getZNear();
-        float w = camera.getAspectRatio() * h;
+       
 
-        glm::vec3 centerNear = camera.getPosition() + fwd * camera.getZNear();
+        //P[1][1] *= -1;
+        glm::mat4 VP = P * V;
 
-        glm::vec3 offsetUp = up * h * 0.5f;
-        glm::vec3 offsetRight = right * w * 0.5f;
+        
+        glm::vec4 row0 = glm::vec4(VP[0][0], VP[1][0], VP[2][0], VP[3][0]);
+        glm::vec4 row1 = glm::vec4(VP[0][1], VP[1][1], VP[2][1], VP[3][1]);
+        glm::vec4 row2 = glm::vec4(VP[0][2], VP[1][2], VP[2][2], VP[3][2]);
+        glm::vec4 row3 = glm::vec4(VP[0][3], VP[1][3], VP[2][3], VP[3][3]);
 
-        glm::vec3 topLeftNear = centerNear + offsetUp - offsetRight;
-        glm::vec3 topRightNear = centerNear + offsetUp + offsetRight;
-        glm::vec3 bottomLeftNear = centerNear - offsetUp - offsetRight;
-        glm::vec3 bottomRightNear = centerNear - offsetUp + offsetRight;
+       
 
-        glm::vec3 edgeTopLeft = topLeftNear - camera.getPosition();
-        glm::vec3 edgeTopRight = topRightNear - camera.getPosition();
-        glm::vec3 edgeBottomLeft = bottomLeftNear - camera.getPosition();
-        glm::vec3 edgeBottomRight = bottomRightNear - camera.getPosition();
+        // Left
+        glm::vec4 left = row3 + row0;
 
-        // near
-        face[0].normal = fwd;
-        face[0].distance = -glm::dot(face[0].normal, centerNear);
+        // Right
+        glm::vec4 right = row3 - row0;
 
-        // far
-        glm::vec3 farPoint = camera.getPosition() + fwd * camera.getZFar();
-        face[1].normal = -fwd;
-        face[1].distance = -glm::dot(face[1].normal, farPoint);
+        // Bottom
+        glm::vec4 bottom = row3 + row1;
 
-        // top
-        face[2].normal = glm::normalize(glm::cross(edgeTopRight, edgeTopLeft));
-        face[2].distance = -glm::dot(face[2].normal, topLeftNear);
+        // Top
+        glm::vec4 top = row3 - row1;
 
-        // bottom
-        face[3].normal = glm::normalize(glm::cross(edgeBottomLeft, edgeBottomRight));
-        face[3].distance = -glm::dot(face[3].normal, bottomLeftNear);
+        // Near
+        glm::vec4 nearP = row3 + row2;
 
-        // left
-        face[4].normal = glm::normalize(glm::cross(edgeTopLeft, edgeBottomLeft));
-        face[4].distance = -glm::dot(face[4].normal, bottomLeftNear);
+        // Far
+        glm::vec4 farP = row3 - row2;
 
-        // right
-        face[5].normal = glm::normalize(glm::cross(edgeBottomRight, edgeTopRight));
-        face[5].distance = -glm::dot(face[5].normal, bottomRightNear);
+        glm::vec4 planes[6] = {nearP, farP, left, right, top, bottom};
+
+        // Normalisation
+        for (int i = 0; i < 6; i++) {
+            glm::vec3 normal = glm::vec3(planes[i]);
+            float length = glm::length(normal);
+
+            face[i].normal = normal / length;
+            face[i].distance = planes[i].w / length;
+        }
     }
 
     bool inside(aabb box) {
-
+        
         for (int i = 0; i < 6; i++) {
 
             glm::vec3 positive;
@@ -277,7 +275,7 @@ public:
         m_mur.position = glm::vec3(0, 0, -100);
         m_mur.center = glm::vec3(0, 0, 0);
         m_mur.up = glm::vec3(0, 1, 0);
-        m_mur.width = 10;
+        m_mur.width = 20;
         m_mur.height = 10;
         m_mur.createMur(box);
 
@@ -325,7 +323,7 @@ public:
             for (int k = 0; k < i; k++) typeStart += m_mur.countType[k];
 
             for (int j = 0; j < m_mur.countType[i]; j++) {
-                if (!m_frustum.inside(m_mur.brick[typeStart + j].box)) {
+                if (m_frustum.inside(m_mur.brick[typeStart + j].box)) {
                     visibleIDs[globalOffset + visibleCount] = typeStart + j;
                     visibleCount++;
                 }
