@@ -82,6 +82,8 @@ struct aabb {
 struct Brick {
     glm::mat4 transform;
     aabb box;
+    uint32_t type;
+    uint32_t pad[3];
 };
 
 struct mur {
@@ -133,9 +135,9 @@ struct plan {
     float distance;
 };
 
-struct Frustum {
+struct Frustum : public RHI::BaseUBO {
     plan face[6];
-
+    GENERATE_UBO_FUNCTIONS(face)
     void updateFrustrum(const Camera &camera) {
         glm::mat4 V = camera.getViewMatrix();
         glm::mat4 P = camera.getProjectionMatrix();
@@ -301,10 +303,24 @@ public:
 
         visibleIDs.resize(m_mur.brick.size());
 
-        m_visibleIDsBuffer.shaderAccess = RHI::ShaderAccessMode::eReadOnly;
+        m_visibleIDsBuffer.shaderAccess = RHI::ShaderAccessMode::eReadWrite;
         m_visibleIDsBuffer.size = sizeof(uint32_t) * visibleIDs.size();
         createAndUploadBuffer(*renderer(), m_visibleIDsBuffer, visibleIDs, "visible IDs");
 
+        visibleCount.resize(5);
+        m_visibleCountBuffer.shaderAccess = RHI::ShaderAccessMode::eReadWrite;
+        m_visibleCountBuffer.size = sizeof(uint32_t) * 5;
+        createAndUploadBuffer(*renderer(), m_visibleCountBuffer, visibleCount, "visibleCount");
+
+        m_computeFrustum.isCompute = true;
+        m_computeFrustum.init({m_shaderPath + "frustum_culling.comp"});
+        renderer()->createPipeline(m_computeFrustum);
+        m_computeFrustum.setUBO(&m_frustum, "frustum");
+
+        m_updateCommand.isCompute = true;
+        m_updateCommand.init({m_shaderPath + "update.comp"});
+        renderer()->createPipeline(m_updateCommand);
+        
     }
 
     void shutdown() override { renderer()->removeShaderIncludePaths(m_shaderPath); }
@@ -316,28 +332,25 @@ public:
         m_viewUbo.updateViewUBO(*cameraSwap);
         m_frustum.updateFrustrum(m_camera);
         
-        uint32_t globalOffset = 0;
-        for (int i = 0; i < 5; i++) {
-            uint32_t visibleCount = 0;
-            uint32_t typeStart = 0;
-            for (int k = 0; k < i; k++) typeStart += m_mur.countType[k];
+        
 
-            for (int j = 0; j < m_mur.countType[i]; j++) {
-                if (m_frustum.inside(m_mur.brick[typeStart + j].box)) {
-                    visibleIDs[globalOffset + visibleCount] = typeStart + j;
-                    visibleCount++;
-                }
-            }
-            command[i].instanceCount = visibleCount;
-            command[i].firstInstance = globalOffset;
-            globalOffset += visibleCount;
-        }
-
-        renderer()->uploadToBuffer(m_indirectBuffer, command);
-        renderer()->uploadToBuffer(m_visibleIDsBuffer, visibleIDs);
+        
         RHI::CommandList commandList;
+        commandList.bindPipeline(&m_computeFrustum);
+
+        commandList.useResource(&m_computeFrustum, 1, 0, &bufferMatrix);
+        commandList.useResource(&m_computeFrustum, 1, 1, &m_visibleIDsBuffer);
+        commandList.useResource(&m_computeFrustum, 1, 2, &m_visibleCountBuffer);
+        commandList.dispatch();
+
+        commandList.bindPipeline(&m_updateCommand);
+        commandList.useResource(&m_computeFrustum, 0, 0, &m_visibleCountBuffer);
+        commandList.useResource(&m_computeFrustum, 0, 1, &m_indirectBuffer);
+        commandList.dispatch(1,1,1);
+
         commandList.bindPipeline(&m_pipelineDesc);
         
+    
         commandList.useResource(&m_pipelineDesc, 1, 0, &bufferMatrix);
         commandList.useResource(&m_pipelineDesc, 1, 1, &m_visibleIDsBuffer);
         commandList.useVertexBuffer(0, 0, &m_vertexBuffer);
@@ -370,20 +383,30 @@ private:
     Camera m_cameraVirtuel;
     DrawIndexedSampleData::ViewUBO m_viewUbo;
     RHI::PipelineDesc m_pipelineDesc;
+    RHI::PipelineDesc m_computeFrustum;
+    RHI::PipelineDesc m_updateCommand;
     RHI::BufferDesc m_vertexBuffer;
     RHI::BufferDesc m_indexBuffer;
+
+    
     
     std::deque<nanosecondsF> gpuTimeHistory;
+
     vector<uint32_t> visibleIDs; 
     RHI::BufferDesc m_visibleIDsBuffer;
+
+    vector<uint32_t> visibleCount; 
+    RHI::BufferDesc m_visibleCountBuffer;
     
-    aabb box[5];
-    offset info[5];
+
     vector<RHI::DrawIndexedIndirectCommand> command;
-    RHI::BufferDesc bufferMatrix;
     RHI::BufferDesc m_indirectBuffer;
 
+    RHI::BufferDesc bufferMatrix;
     mur m_mur;
+
+    offset info[5];
+    aabb box[5];
     Frustum m_frustum;
 };
     

@@ -1,0 +1,56 @@
+#version 460
+layout(local_size_x = 64) in;
+struct Brick{
+    mat4 transform;
+    vec4 min;
+    vec4 max;
+    uint type;
+};
+
+struct plan {
+    vec3 normal;
+    float distance;
+};
+
+
+layout(set=0, binding=0)  buffer uniform frustum { plan face[6]; };
+layout(std430, set = 1, binding = 0) buffer MatrixBuffer{
+    Brick brick[];
+};
+
+layout(set=1, binding=1)  buffer VisibleIDs  { uint ids[]; };
+layout(set=1, binding=2)  buffer VisibleCounts  { uint counts[]; };
+
+
+bool inside(vec4 max,vec4 min) {
+     
+    for (int i = 0; i < 6; i++) {
+
+        vec3 positive;
+
+        for (int j = 0; j < 3; j++) {
+            if (frustum.face[i].normal[j] >= 0)
+                positive[j] = max[j];
+            else
+                positive[j] = min[j];
+        }
+
+        float d = dot(frustum.face[i].normal, positive) + frustum.face[i].distance;
+
+        if (d < 0)
+            return false;
+    }
+     return true;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= bricks.length()) return;
+
+    Brick b = brick[id];
+    
+    if(inside(b.max,b.min)){
+        uint slot = atomicAdd(counts[b.type], 1);
+        ids[slot] = id;
+    }
+}

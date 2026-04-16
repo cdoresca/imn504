@@ -18,6 +18,7 @@ struct Brick{
     mat4 transform;
     vec4 min;
     vec4 max;
+    
 };
 layout(std430, set = 1, binding = 0) buffer MatrixBuffer{
     Brick brick[];
@@ -26,7 +27,7 @@ layout(set=1, binding=1) readonly buffer VisibleIDs  { uint ids[]; };
 
 void main() {
     
-     uint id = ids[gl_InstanceIndex];
+    uint id = ids[gl_InstanceIndex];
     mat4 model = brick[id].transform;
     
     gl_Position = viewUbo.projection * viewUbo.view * model * vec4(inPosition, 1.0);

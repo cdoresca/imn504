@@ -1,0 +1,28 @@
+#version 460
+layout(local_size_x = 5) in;
+
+layout(set=0, binding=0)  buffer VisibleCounts  { uint counts[]; };
+
+struct DrawCommand {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int  vertexOffset;
+    uint firstInstance;
+};
+
+layout(set=0, binding=1)  buffer indirectCommand {
+    DrawCommand commands[];
+};
+
+void main(){
+    uint id = gl_GlobalInvocationID.x;
+
+    uint begin = 0;
+    for(int i = 0, i < id; i++)
+        begin += counts[id];
+    uint size = counts[id];
+
+    commands[id].instanceCount = size;
+    commands[id].firstInstance = begin;
+}
